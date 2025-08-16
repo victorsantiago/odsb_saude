@@ -10,8 +10,8 @@
   <style>
     :root {
       --bg:#ffffff; --panel:#f5f7fb; --text:#0b1020; --muted:#5b6b82;
-      --blue:#1e90ff; --red:#ff4d4f; --warn:#f59e0b;
-      --rowActive:#fff7ed; --rowHover:#f8fafc; --shadow:0 10px 30px rgba(0,0,0,.15);
+      --blue:#1e90ff; --red:#ff4d4f; --green:#16a34a; --warn:#f59e0b;
+      --rowActive:#fff7ed; --rowHover:#f8fafc;
     }
     html, body { height:100%; margin:0; background:var(--bg); color:var(--text);
       font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial; }
@@ -24,7 +24,7 @@
     .legend-dot { width:10px; height:10px; border-radius:50%; display:inline-block; }
     .legend-dot.blue { background:var(--blue); }
     .legend-dot.red  { background:var(--red); }
-    .main { display:grid; grid-template-columns: 1fr 420px; gap:0; height: calc(100vh - 90px); }
+    .main { display:grid; grid-template-columns: 1fr 400px; gap:0; height: calc(100vh - 90px); }
     .map { height:100%; }
     aside { border-left: 1px solid #e9eef7; background:#fff; height:100%; overflow:auto; }
     .aside-head { position:sticky; top:0; background:#fff; z-index:5; padding:10px 12px; border-bottom:1px solid #e9eef7; display:flex; gap:8px; align-items:center; }
@@ -36,10 +36,11 @@
     tbody td { padding:8px; border-bottom:1px solid #f1f5f9; }
     tbody tr:hover { background:var(--rowHover); }
     tbody tr.active { background:var(--rowActive); box-shadow: inset 2px 0 0 var(--warn); }
+    td.clickable { cursor:pointer; text-decoration: underline; }
     .pill { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; }
     .pill.on { background:#e6f7ef; color:#065f46; }
     .pill.off { background:#fdecea; color:#7f1d1d; }
-    .leaflet-popup-content-wrapper { border-radius: 14px; box-shadow: var(--shadow); }
+    .leaflet-popup-content-wrapper { border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.15); }
     .leaflet-popup-content { margin: 12px 16px; }
     .popup-card h3 { margin: 0 0 10px 0; font-size: 16px; font-weight: 800; }
     .info-table { border-collapse: collapse; width: 100%; }
@@ -48,37 +49,43 @@
     .info-table td.k { color: #1f3b63; font-weight: 600; width: 42%; }
     .warn { margin: 10px 16px; padding:10px 12px; background:#fff7ed; border:1px solid #fde68a; border-radius:8px; color:#92400e; display:none; }
     .warn strong { color:#b45309; }
-    .warn code { background:#fff; padding:2px 6px; border-radius:6px; }
     .warn input { margin-top:8px; }
-    .diag { font-size:12px; color:#6b7280; margin-top:6px; }
 
-    /* Botão flutuante (mostra apenas em telas <= 992px) */
-    .fab {
-      position: fixed; right: 16px; bottom: 16px; z-index: 1100;
-      display: none; align-items: center; gap: 8px;
-      padding: 12px 14px; border-radius: 999px; border: none;
-      background: #0ea5e9; color: white; font-weight: 700; box-shadow: var(--shadow);
+    /* Botão flutuante para abrir/fechar a lista em telas pequenas */
+    .toggle-btn {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: var(--blue);
+      color: #fff;
+      border: none;
+      border-radius: 50%;
+      width: 52px;
+      height: 52px;
+      font-size: 24px;
       cursor: pointer;
+      display: none;
+      box-shadow: 0 4px 12px rgba(0,0,0,.25);
+      z-index: 1500;
     }
-    .fab svg { width: 18px; height: 18px; }
+    .toggle-btn:active { transform: translateY(1px); }
 
-    /* Overlay escuro quando a lateral abre em telas pequenas */
-    .overlay {
-      position: fixed; inset: 0; background: rgba(0,0,0,.35); backdrop-filter: blur(1px);
-      z-index: 1040; display: none;
-    }
-
-    /* Responsividade: painel deslizante */
-    @media (max-width: 992px) {
+    /* Responsivo: esconde a coluna lateral e mostra o botão */
+    @media (max-width: 900px) {
       .main { grid-template-columns: 1fr; }
       aside {
-        position: fixed; right: 0; top: 64px; bottom: 0; width: min(92vw, 440px);
-        transform: translateX(100%); transition: transform .25s ease;
-        border-left: none; border-top-left-radius: 12px; border-bottom-left-radius: 12px;
-        box-shadow: var(--shadow); z-index: 1050;
+        position: fixed;
+        top: 0;
+        right: -100%;
+        width: 86%;
+        max-width: 420px;
+        height: 100%;
+        transition: right 0.3s ease;
+        z-index: 1200;
+        box-shadow: -8px 0 24px rgba(0,0,0,.18);
       }
-      aside.open { transform: translateX(0%); }
-      .fab { display: inline-flex; }
+      aside.open { right: 0; }
+      .toggle-btn { display: inline-flex; align-items:center; justify-content:center; }
     }
   </style>
 </head>
@@ -97,20 +104,17 @@
 
     <div class="main">
       <div id="map" class="map"></div>
-      <aside id="sidebar" aria-label="Lista de Unidades de Saúde">
+      <aside>
         <div class="aside-head">
           <input id="searchInput" type="search" placeholder="Buscar unidade por nome ou CNES..." />
         </div>
         <div id="warn" class="warn">
-          <div><strong>Não foi possível carregar o CSV</strong></div>
-          <div>Arquivo tentado: <code id="csvTried">unidades_saude.csv</code></div>
-          <div class="diag" id="csvDiag">—</div>
+          <div><strong>Não foi possível carregar <code>unidades_saude.csv</code></strong>.</div>
+          <div>Isso pode acontecer ao abrir o arquivo direto via <code>file://</code>. Você pode:</div>
           <ul>
-            <li>Confirme que o CSV está na <strong>mesma pasta</strong> deste HTML.</li>
-            <li>Se estiver abrindo via <code>file://</code>, alguns navegadores bloqueiam o acesso. Use um servidor local ou <strong>GitHub Pages</strong>.</li>
-            <li>Ou carregue o CSV manualmente abaixo.</li>
+            <li>Publicar via GitHub Pages/servidor local, <em>ou</em></li>
+            <li>Carregar o CSV manualmente abaixo.</li>
           </ul>
-          <input type="file" id="csvFile" accept=".csv" />
         </div>
         <div class="table-wrap">
           <table id="unitsTable">
@@ -126,28 +130,17 @@
         </div>
       </aside>
     </div>
-
-    <!-- Botão flutuante -->
-    <button id="fab" class="fab" aria-controls="sidebar" aria-expanded="false" aria-label="Mostrar lista de unidades">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M3 6h18M3 12h18M3 18h18"/>
-      </svg>
-      Lista
-    </button>
-
-    <!-- Overlay -->
-    <div id="overlay" class="overlay" aria-hidden="true"></div>
   </div>
 
+  <!-- Botão flutuante -->
+  <button id="toggleAside" class="toggle-btn" aria-label="Abrir/fechar lista">☰</button>
+
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- FIX: caminho correto do plugin MarkerCluster -->
   <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
   <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
 
   <script>
-    // === CSV via query string ?csv= ===
-    const qs = new URLSearchParams(location.search);
-    const DATA_URL = qs.get('csv') || 'unidades_saude.csv';
-
     // === Mapa ===
     const map = L.map('map').setView([-1.504, -48.625], 11);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -157,50 +150,47 @@
     const groupWith = L.markerClusterGroup({ disableClusteringAtZoom: 16 });
     const groupWithout = L.markerClusterGroup({ disableClusteringAtZoom: 16 });
 
-    // === UI refs ===
     const $countAll = document.getElementById('countAll');
     const $toggleWith = document.getElementById('toggleWith');
     const $toggleWithout = document.getElementById('toggleWithout');
     const $tableBody = document.querySelector('#unitsTable tbody');
     const $warn = document.getElementById('warn');
     const $csvFile = document.getElementById('csvFile');
-    const $csvTried = document.getElementById('csvTried');
-    const $csvDiag = document.getElementById('csvDiag');
     const $search = document.getElementById('searchInput');
-    const $sidebar = document.getElementById('sidebar');
-    const $fab = document.getElementById('fab');
-    const $overlay = document.getElementById('overlay');
+    const $aside = document.querySelector('aside');
+    const $toggleBtn = document.getElementById('toggleAside');
 
-    // === FAB (mostra/oculta painel em telas pequenas) ===
-    function openSidebar() {
-      $sidebar.classList.add('open');
-      $overlay.style.display = 'block';
-      $fab.setAttribute('aria-expanded', 'true');
-      setTimeout(() => { $search?.focus(); }, 120);
-    }
-    function closeSidebar() {
-      $sidebar.classList.remove('open');
-      $overlay.style.display = 'none';
-      $fab.setAttribute('aria-expanded', 'false');
-    }
-    $fab.addEventListener('click', () => {
-      if ($sidebar.classList.contains('open')) closeSidebar(); else openSidebar();
-    });
-    $overlay.addEventListener('click', closeSidebar);
-
-    // Mostra uma dica no console para checar a largura
-    console.log('Viewport width:', window.innerWidth, '— FAB aparece quando <= 992px');
-
-    // === Estado ===
     let DATA = [];
     let latKey = null, lonKey = null;
     const markers = [];
     const markerGroupByIndex = [];
-    let filteredIdxs = [];
+    let filteredIdxs = []; // índices atuais após filtro de busca
     let currentActiveRow = null;
 
-    // === Utils ===
-    function diag(msg) { if ($csvDiag) $csvDiag.textContent = msg; }
+    function healthPin(color) {
+      return L.divIcon({
+        className: 'custom-pin',
+        html: `
+          <svg width="28" height="40" viewBox="0 0 28 40" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+                <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="rgba(0,0,0,0.25)"/>
+              </filter>
+            </defs>
+            <path d="M14 0C6.268 0 0 6.268 0 14c0 9.708 12.12 25.0 12.64 25.64a1.9 1.9 0 0 0 2.72 0C15.88 39 28 23.708 28 14 28 6.268 21.732 0 14 0z"
+                  fill="\${color}" filter="url(#shadow)"/>
+            <rect x="12" y="6" width="4" height="16" rx="1" fill="white"/>
+            <rect x="6" y="12" width="16" height="4" rx="1" fill="white"/>
+          </svg>
+        `.replace("\${color}", color),
+        iconSize: [28, 40],
+        iconAnchor: [14, 40],
+        popupAnchor: [0, -36]
+      });
+    }
+    const iconBlue = healthPin('#1e90ff');
+    const iconRed  = healthPin('#ff4d4f');
+
     function normalizeBool(v) {
       if (v == null) return null;
       const s = String(v).trim().toLowerCase();
@@ -219,6 +209,7 @@
       for (const k of keys) if (r[k] != null && String(r[k]).trim() !== "") return r[k];
       return fallback;
     }
+
     function buildPopup(r) {
       const nome = val(r, ["Nome Fantasia","Nome","Unidade","NO_FANTASIA","NO_UNIDADE_SAUDE"], "Unidade de Saúde");
       const tipo = val(r, ["Tipo Unidade","Tipo","TP_UNIDADE"], "-");
@@ -227,14 +218,18 @@
       const net  = val(r, ["Internet","CE Internet","Conectividade","COM_INTERNET","INTERNET"], "-");
       const hasNet = normalizeBool(net);
       const netOut = hasNet===true ? "Sim" : (hasNet===false ? "Não" : String(net||"-"));
-      return `<div class="popup-card"><h3>${nome}</h3>
+      return `
+        <div class="popup-card">
+          <h3>${nome}</h3>
           <table class="info-table">
             <tr><td class="k">Tipo</td><td>${tipo}</td></tr>
             <tr><td class="k">CNES</td><td>${cnes}</td></tr>
             <tr><td class="k">Gestão</td><td>${gest}</td></tr>
             <tr><td class="k">Internet</td><td><span class="pill ${hasNet ? 'on' : 'off'}">${netOut}</span></td></tr>
-          </table></div>`;
+          </table>
+        </div>`;
     }
+
     function detectLatLonKeys() {
       const keys = Object.keys(DATA[0] || {});
       function findKey(cands) {
@@ -245,6 +240,7 @@
       latKey = findKey(["latitude","latitute","lat","coord y","y","coordenaday","nu_latitude"]);
       lonKey = findKey(["longitude","lon","lng","long","coord x","x","coordenadax","nu_longitude"]);
     }
+
     function updateCount() {
       const withCount = groupWith.getLayers().length;
       const withoutCount = groupWithout.getLayers().length;
@@ -253,20 +249,30 @@
       if ($toggleWithout.checked) visible += withoutCount;
       $countAll.textContent = visible;
     }
+
     function refreshVisibility() {
       if ($toggleWith.checked) map.addLayer(groupWith); else map.removeLayer(groupWith);
       if ($toggleWithout.checked) map.addLayer(groupWithout); else map.removeLayer(groupWithout);
       updateCount();
     }
+
     function clearActiveRow() {
-      if (currentActiveRow && currentActiveRow.isConnected) currentActiveRow.classList.remove('active');
+      if (currentActiveRow && currentActiveRow.isConnected) {
+        currentActiveRow.classList.remove('active');
+      }
       currentActiveRow = null;
     }
+
     function setActiveRowByIndex(idx) {
       clearActiveRow();
       const row = document.querySelector(`tr[data-idx="${idx}"]`);
-      if (row) { row.classList.add('active'); row.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); currentActiveRow = row; }
+      if (row) {
+        row.classList.add('active');
+        currentActiveRow = row;
+        row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }
     }
+
     function flyAndOpen(marker, belongsTo, idxForRowHighlight=null) {
       if (belongsTo === 'with' && !$toggleWith.checked) { $toggleWith.checked = true; }
       if (belongsTo === 'without' && !$toggleWithout.checked) { $toggleWithout.checked = true; }
@@ -275,10 +281,9 @@
       map.flyTo(latlng, Math.max(map.getZoom(), 16), { duration: 0.6 });
       setTimeout(() => { marker.openPopup(); }, 600);
       if (idxForRowHighlight != null) setActiveRowByIndex(idxForRowHighlight);
-      if (window.innerWidth <= 992) closeSidebar();
+      if (window.matchMedia('(max-width: 900px)').matches) $aside.classList.remove('open');
     }
 
-    // === Build mapa + tabela ===
     function renderTable(indexes) {
       $tableBody.innerHTML = "";
       indexes.forEach((idx) => {
@@ -291,13 +296,20 @@
 
         const tr = document.createElement("tr");
         tr.setAttribute('data-idx', String(idx));
-        tr.innerHTML = `<td class="clickable">${nome}</td><td class="clickable">${tipo}</td><td class="clickable"><span class="${pillClass}">${netOut}</span></td>`;
-        tr.addEventListener('click', () => { flyAndOpen(markers[idx], markerGroupByIndex[idx], idx); });
+        tr.innerHTML = `
+          <td class="clickable">${nome}</td>
+          <td class="clickable">${tipo}</td>
+          <td class="clickable"><span class="${pillClass}">${netOut}</span></td>
+        `;
+        tr.addEventListener('click', () => {
+          flyAndOpen(markers[idx], markerGroupByIndex[idx], idx);
+        });
         $tableBody.appendChild(tr);
       });
     }
+
     function applySearch() {
-      const q = ($search?.value || "").toLowerCase().trim();
+      const q = ($search.value || "").toLowerCase().trim();
       if (!q) {
         filteredIdxs = DATA.map((_, i) => i);
       } else {
@@ -309,6 +321,7 @@
       }
       renderTable(filteredIdxs);
     }
+
     function refreshMapAndBuild() {
       groupWith.clearLayers();
       groupWithout.clearLayers();
@@ -320,13 +333,18 @@
         const lon = parseNumber(lonKey ? r[lonKey] : r["Longitude"]);
         if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
         const hasNet = normalizeBool(val(r, ["Internet","CE Internet","Conectividade","COM_INTERNET","INTERNET"], null));
-        const marker = L.marker([lat, lon], { icon: hasNet === false ? iconRed : iconBlue }).bindPopup(buildPopup(r));
-        marker.on('popupopen', () => { setActiveRowByIndex(idx); });
+        const marker = L.marker([lat, lon], { icon: hasNet === false ? iconRed : iconBlue })
+                        .bindPopup(buildPopup(r));
+
+        marker.on('popupopen', () => setActiveRowByIndex(idx));
         marker.on('popupclose', () => {
           const row = document.querySelector(`tr[data-idx="${idx}"]`);
           if (row && row === currentActiveRow) clearActiveRow();
         });
-        (hasNet === false ? groupWithout : groupWith).addLayer(marker);
+
+        const group = (hasNet === false ? groupWithout : groupWith);
+        group.addLayer(marker);
+
         markers[idx] = marker;
         markerGroupByIndex[idx] = (hasNet === false ? 'without' : 'with');
       });
@@ -339,12 +357,12 @@
       renderTable(filteredIdxs);
     }
 
-    // === Carregamento CSV (com diagnóstico) ===
+    // === Carregamento do CSV ===
+    const DATA_URL = 'unidades_saude.csv';
     async function loadCSV() {
       try {
-        if ($csvTried) $csvTried.textContent = DATA_URL;
         const res = await fetch(DATA_URL, { cache: 'no-store' });
-        if (!res.ok) throw new Error(`HTTP ${res.status} ao buscar ${DATA_URL}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const text = await res.text();
         const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
         DATA = parsed.data;
@@ -353,43 +371,32 @@
       } catch (e) {
         console.error('Falha ao carregar CSV via fetch:', e);
         $warn.style.display = 'block';
-        diag(String(e && e.message ? e.message : e));
       }
     }
     loadCSV();
 
-    // Fallback: upload manual
-    if ($csvFile) {
-      $csvFile.addEventListener('change', (ev) => {
-        const file = ev.target.files && ev.target.files[0];
-        if (!file) return;
-        Papa.parse(file, {
-          header: true,
-          skipEmptyLines: true,
-          complete: (results) => {
-            DATA = results.data;
-            detectLatLonKeys();
-            $warn.style.display = 'none';
-            refreshMapAndBuild();
-            applySearch();
-          },
-          error: (err) => { alert('Erro ao ler o CSV: ' + err.message); }
-        });
-      });
-    }
-
     // Busca com debounce leve
     let searchTimer = null;
-    if ($search) {
-      $search.addEventListener('input', () => {
-        if (searchTimer) cancelAnimationFrame(searchTimer);
-        searchTimer = requestAnimationFrame(applySearch);
-      });
-    }
+    $search.addEventListener('input', () => {
+      if (searchTimer) cancelAnimationFrame(searchTimer);
+      searchTimer = requestAnimationFrame(applySearch);
+    });
 
-    // Toggles
+    // Eventos dos toggles
     $toggleWith.addEventListener('change', refreshVisibility);
     $toggleWithout.addEventListener('change', refreshVisibility);
+
+    // Botão flutuante: abrir/fechar a lista lateral em telas pequenas
+    $toggleBtn.addEventListener('click', () => {
+      $aside.classList.toggle('open');
+    });
+
+    // Fecha a lista ao clicar no mapa em telas pequenas
+    map.on('click', () => {
+      if (window.matchMedia('(max-width: 900px)').matches) {
+        $aside.classList.remove('open');
+      }
+    });
   </script>
 </body>
 </html>
