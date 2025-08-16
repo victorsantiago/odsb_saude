@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Barcarena — Unidades de Saúde (Conectividade)</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css"/>
+  <style>
+    :root {
+      --bg:#ffffff; --panel:#f5f7fb; --text:#0b1020; --muted:#5b6b82;
+      --blue:#1e90ff; --red:#ff4d4f; --warn:#f59e0b;
+      --rowActive:#fff7ed; --rowHover:#f8fafc; --shadow:0 10px 30px rgba(0,0,0,.15);
+    }
+    html, body { height:100%; margin:0; background:var(--bg); color:var(--text);
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial; }
+    .app { display:grid; grid-template-rows:auto 1fr; height:100%; }
+    header { display:flex; flex-wrap:wrap; gap:16px; align-items:center; padding:12px 16px;
+      background:var(--panel); box-shadow:0 2px 12px rgba(0,0,0,.08); position:sticky; top:0; z-index:1000; }
+    header h1 { font-size:18px; margin:0; letter-spacing:.2px; }
+    .controls { display:flex; flex-wrap:wrap; gap:10px; align-items:center; font-size:14px; color:var(--muted); }
+    .badge { display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px; background:#eef2f9; }
+    .legend-dot { width:10px; height:10px; border-radius:50%; display:inline-block; }
+    .legend-dot.blue { background:var(--blue); }
+    .legend-dot.red  { background:var(--red); }
+    .main { display:grid; grid-template-columns: 1fr 420px; gap:0; height: calc(100vh - 90px); }
+    .map { height:100%; }
+    aside { border-left: 1px solid #e9eef7; background:#fff; height:100%; overflow:auto; }
+    .aside-head { position:sticky; top:0; background:#fff; z-index:5; padding:10px 12px; border-bottom:1px solid #e9eef7; display:flex; gap:8px; align-items:center; }
+    .aside-head input[type="search"] { width:100%; padding:10px 12px; border:1px solid #dbe3f0; border-radius:10px; font-size:14px; outline:none; }
+    .aside-head input[type="search"]::placeholder { color:#94a3b8; }
+    .table-wrap { padding:8px 12px; }
+    table { width:100%; border-collapse: collapse; font-size:13px; }
+    thead th { position:sticky; top:62px; background:#f8fafc; font-weight:700; text-align:left; padding:8px; border-bottom:1px solid #e9eef7; z-index:4; }
+    tbody td { padding:8px; border-bottom:1px solid #f1f5f9; }
+    tbody tr:hover { background:var(--rowHover); }
+    tbody tr.active { background:var(--rowActive); box-shadow: inset 2px 0 0 var(--warn); }
+    .pill { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; }
+    .pill.on { background:#e6f7ef; color:#065f46; }
+    .pill.off { background:#fdecea; color:#7f1d1d; }
+    .leaflet-popup-content-wrapper { border-radius: 14px; box-shadow: var(--shadow); }
+    .leaflet-popup-content { margin: 12px 16px; }
+    .popup-card h3 { margin: 0 0 10px 0; font-size: 16px; font-weight: 800; }
+    .info-table { border-collapse: collapse; width: 100%; }
+    .info-table tr:not(:last-child) td { border-bottom: 1px solid #e6edf6; }
+    .info-table td { padding: 6px 0; vertical-align: top; }
+    .info-table td.k { color: #1f3b63; font-weight: 600; width: 42%; }
+    .warn { margin: 10px 16px; padding:10px 12px; background:#fff7ed; border:1px solid #fde68a; border-radius:8px; color:#92400e; display:none; }
+    .warn strong { color:#b45309; }
+    .warn code { background:#fff; padding:2px 6px; border-radius:6px; }
+    .warn input { margin-top:8px; }
+    .diag { font-size:12px; color:#6b7280; margin-top:6px; }
+
+    /* Botão flutuante (mostra apenas em telas <= 992px) */
+    .fab {
+      position: fixed; right: 16px; bottom: 16px; z-index: 1100;
+      display: none; align-items: center; gap: 8px;
+      padding: 12px 14px; border-radius: 999px; border: none;
+      background: #0ea5e9; color: white; font-weight: 700; box-shadow: var(--shadow);
+      cursor: pointer;
+    }
+    .fab svg { width: 18px; height: 18px; }
+
+    /* Overlay escuro quando a lateral abre em telas pequenas */
+    .overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,.35); backdrop-filter: blur(1px);
+      z-index: 1040; display: none;
+    }
+
+    /* Responsividade: painel deslizante */
+    @media (max-width: 992px) {
+      .main { grid-template-columns: 1fr; }
+      aside {
+        position: fixed; right: 0; top: 64px; bottom: 0; width: min(92vw, 440px);
+        transform: translateX(100%); transition: transform .25s ease;
+        border-left: none; border-top-left-radius: 12px; border-bottom-left-radius: 12px;
+        box-shadow: var(--shadow); z-index: 1050;
+      }
+      aside.open { transform: translateX(0%); }
+      .fab { display: inline-flex; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>Barcarena — Unidades de Saúde (Conectividade)</h1>
+      <div class="controls">
+        <span class="badge"><span class="legend-dot blue"></span> Com internet</span>
+        <span class="badge"><span class="legend-dot red"></span> Sem internet</span>
+        <label class="badge"><input id="toggleWith" type="checkbox" checked/> Com Internet</label>
+        <label class="badge"><input id="toggleWithout" type="checkbox" checked/> Sem Internet</label>
+        <span class="badge"><strong id="countAll">0</strong> unidades</span>
+      </div>
+    </header>
+
+    <div class="main">
+      <div id="map" class="map"></div>
+      <aside id="sidebar" aria-label="Lista de Unidades de Saúde">
+        <div class="aside-head">
+          <input id="searchInput" type="search" placeholder="Buscar unidade por nome ou CNES..." />
+        </div>
+        <div id="warn" class="warn">
+          <div><strong>Não foi possível carregar o CSV</strong></div>
+          <div>Arquivo tentado: <code id="csvTried">unidades_saude.csv</code></div>
+          <div class="diag" id="csvDiag">—</div>
+          <ul>
+            <li>Confirme que o CSV está na <strong>mesma pasta</strong> deste HTML.</li>
+            <li>Se estiver abrindo via <code>file://</code>, alguns navegadores bloqueiam o acesso. Use um servidor local ou <strong>GitHub Pages</strong>.</li>
+            <li>Ou carregue o CSV manualmente abaixo.</li>
+          </ul>
+          <input type="file" id="csvFile" accept=".csv" />
+        </div>
+        <div class="table-wrap">
+          <table id="unitsTable">
+            <thead>
+              <tr>
+                <th>Unidade</th>
+                <th>Tipo</th>
+                <th>Internet</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </aside>
+    </div>
+
+    <!-- Botão flutuante -->
+    <button id="fab" class="fab" aria-controls="sidebar" aria-expanded="false" aria-label="Mostrar lista de unidades">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M3 6h18M3 12h18M3 18h18"/>
+      </svg>
+      Lista
+    </button>
+
+    <!-- Overlay -->
+    <div id="overlay" class="overlay" aria-hidden="true"></div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+
+  <script>
+    // === CSV via query string ?csv= ===
+    const qs = new URLSearchParams(location.search);
+    const DATA_URL = qs.get('csv') || 'unidades_saude.csv';
+
+    // === Mapa ===
+    const map = L.map('map').setView([-1.504, -48.625], 11);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19, attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    const groupWith = L.markerClusterGroup({ disableClusteringAtZoom: 16 });
+    const groupWithout = L.markerClusterGroup({ disableClusteringAtZoom: 16 });
+
+    // === UI refs ===
+    const $countAll = document.getElementById('countAll');
+    const $toggleWith = document.getElementById('toggleWith');
+    const $toggleWithout = document.getElementById('toggleWithout');
+    const $tableBody = document.querySelector('#unitsTable tbody');
+    const $warn = document.getElementById('warn');
+    const $csvFile = document.getElementById('csvFile');
+    const $csvTried = document.getElementById('csvTried');
+    const $csvDiag = document.getElementById('csvDiag');
+    const $search = document.getElementById('searchInput');
+    const $sidebar = document.getElementById('sidebar');
+    const $fab = document.getElementById('fab');
+    const $overlay = document.getElementById('overlay');
+
+    // === FAB (mostra/oculta painel em telas pequenas) ===
+    function openSidebar() {
+      $sidebar.classList.add('open');
+      $overlay.style.display = 'block';
+      $fab.setAttribute('aria-expanded', 'true');
+      setTimeout(() => { $search?.focus(); }, 120);
+    }
+    function closeSidebar() {
+      $sidebar.classList.remove('open');
+      $overlay.style.display = 'none';
+      $fab.setAttribute('aria-expanded', 'false');
+    }
+    $fab.addEventListener('click', () => {
+      if ($sidebar.classList.contains('open')) closeSidebar(); else openSidebar();
+    });
+    $overlay.addEventListener('click', closeSidebar);
+
+    // Mostra uma dica no console para checar a largura
+    console.log('Viewport width:', window.innerWidth, '— FAB aparece quando <= 992px');
+
+    // === Estado ===
+    let DATA = [];
+    let latKey = null, lonKey = null;
+    const markers = [];
+    const markerGroupByIndex = [];
+    let filteredIdxs = [];
+    let currentActiveRow = null;
+
+    // === Utils ===
+    function diag(msg) { if ($csvDiag) $csvDiag.textContent = msg; }
+    function normalizeBool(v) {
+      if (v == null) return null;
+      const s = String(v).trim().toLowerCase();
+      if (["sim","yes","true","1","y","s","com","tem","possui"].includes(s)) return true;
+      if (["nao","não","no","false","0","n","sem"].includes(s)) return false;
+      const n = Number(s.replace(',', '.'));
+      if (!isNaN(n)) return n > 0;
+      return null;
+    }
+    function parseNumber(v) {
+      if (v == null) return NaN;
+      const s = String(v).trim().replace(',', '.');
+      return Number(s);
+    }
+    function val(r, keys, fallback="") {
+      for (const k of keys) if (r[k] != null && String(r[k]).trim() !== "") return r[k];
+      return fallback;
+    }
+    function buildPopup(r) {
+      const nome = val(r, ["Nome Fantasia","Nome","Unidade","NO_FANTASIA","NO_UNIDADE_SAUDE"], "Unidade de Saúde");
+      const tipo = val(r, ["Tipo Unidade","Tipo","TP_UNIDADE"], "-");
+      const cnes = val(r, ["CNES","cnes","CO_UNIDADE"], "-");
+      const gest = val(r, ["Gestão","Gestao","Esfera","TP_GESTAO"], "-");
+      const net  = val(r, ["Internet","CE Internet","Conectividade","COM_INTERNET","INTERNET"], "-");
+      const hasNet = normalizeBool(net);
+      const netOut = hasNet===true ? "Sim" : (hasNet===false ? "Não" : String(net||"-"));
+      return `<div class="popup-card"><h3>${nome}</h3>
+          <table class="info-table">
+            <tr><td class="k">Tipo</td><td>${tipo}</td></tr>
+            <tr><td class="k">CNES</td><td>${cnes}</td></tr>
+            <tr><td class="k">Gestão</td><td>${gest}</td></tr>
+            <tr><td class="k">Internet</td><td><span class="pill ${hasNet ? 'on' : 'off'}">${netOut}</span></td></tr>
+          </table></div>`;
+    }
+    function detectLatLonKeys() {
+      const keys = Object.keys(DATA[0] || {});
+      function findKey(cands) {
+        for (const k of keys) { const kl = k.toLowerCase(); for (const c of cands) if (kl === c) return k; }
+        for (const k of keys) { const kl = k.toLowerCase(); for (const c of cands) if (kl.includes(c)) return k; }
+        return null;
+      }
+      latKey = findKey(["latitude","latitute","lat","coord y","y","coordenaday","nu_latitude"]);
+      lonKey = findKey(["longitude","lon","lng","long","coord x","x","coordenadax","nu_longitude"]);
+    }
+    function updateCount() {
+      const withCount = groupWith.getLayers().length;
+      const withoutCount = groupWithout.getLayers().length;
+      let visible = 0;
+      if ($toggleWith.checked)    visible += withCount;
+      if ($toggleWithout.checked) visible += withoutCount;
+      $countAll.textContent = visible;
+    }
+    function refreshVisibility() {
+      if ($toggleWith.checked) map.addLayer(groupWith); else map.removeLayer(groupWith);
+      if ($toggleWithout.checked) map.addLayer(groupWithout); else map.removeLayer(groupWithout);
+      updateCount();
+    }
+    function clearActiveRow() {
+      if (currentActiveRow && currentActiveRow.isConnected) currentActiveRow.classList.remove('active');
+      currentActiveRow = null;
+    }
+    function setActiveRowByIndex(idx) {
+      clearActiveRow();
+      const row = document.querySelector(`tr[data-idx="${idx}"]`);
+      if (row) { row.classList.add('active'); row.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); currentActiveRow = row; }
+    }
+    function flyAndOpen(marker, belongsTo, idxForRowHighlight=null) {
+      if (belongsTo === 'with' && !$toggleWith.checked) { $toggleWith.checked = true; }
+      if (belongsTo === 'without' && !$toggleWithout.checked) { $toggleWithout.checked = true; }
+      refreshVisibility();
+      const latlng = marker.getLatLng();
+      map.flyTo(latlng, Math.max(map.getZoom(), 16), { duration: 0.6 });
+      setTimeout(() => { marker.openPopup(); }, 600);
+      if (idxForRowHighlight != null) setActiveRowByIndex(idxForRowHighlight);
+      if (window.innerWidth <= 992) closeSidebar();
+    }
+
+    // === Build mapa + tabela ===
+    function renderTable(indexes) {
+      $tableBody.innerHTML = "";
+      indexes.forEach((idx) => {
+        const r = DATA[idx];
+        const hasNet = normalizeBool(val(r, ["Internet","CE Internet","Conectividade","COM_INTERNET","INTERNET"], null));
+        const nome = val(r, ["Nome Fantasia","Nome","Unidade","NO_FANTASIA","NO_UNIDADE_SAUDE"], "Unidade de Saúde");
+        const tipo = val(r, ["Tipo Unidade","Tipo","TP_UNIDADE"], "-");
+        const netOut = hasNet===true ? "Sim" : (hasNet===false ? "Não" : String(val(r, ["Internet","CE Internet","Conectividade","COM_INTERNET","INTERNET"], "-")));
+        const pillClass = hasNet ? "pill on" : (hasNet===false ? "pill off" : "pill");
+
+        const tr = document.createElement("tr");
+        tr.setAttribute('data-idx', String(idx));
+        tr.innerHTML = `<td class="clickable">${nome}</td><td class="clickable">${tipo}</td><td class="clickable"><span class="${pillClass}">${netOut}</span></td>`;
+        tr.addEventListener('click', () => { flyAndOpen(markers[idx], markerGroupByIndex[idx], idx); });
+        $tableBody.appendChild(tr);
+      });
+    }
+    function applySearch() {
+      const q = ($search?.value || "").toLowerCase().trim();
+      if (!q) {
+        filteredIdxs = DATA.map((_, i) => i);
+      } else {
+        filteredIdxs = DATA.map((r, i) => {
+          const nome = val(r, ["Nome Fantasia","Nome","Unidade","NO_FANTASIA","NO_UNIDADE_SAUDE"], "");
+          const cnes = val(r, ["CNES","cnes","CO_UNIDADE"], "");
+          return { i, hay: (nome + " " + cnes).toLowerCase() };
+        }).filter(obj => obj.hay.includes(q)).map(obj => obj.i);
+      }
+      renderTable(filteredIdxs);
+    }
+    function refreshMapAndBuild() {
+      groupWith.clearLayers();
+      groupWithout.clearLayers();
+      markers.length = 0;
+      markerGroupByIndex.length = 0;
+
+      DATA.forEach((r, idx) => {
+        const lat = parseNumber(latKey ? r[latKey] : r["Latitude"]);
+        const lon = parseNumber(lonKey ? r[lonKey] : r["Longitude"]);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+        const hasNet = normalizeBool(val(r, ["Internet","CE Internet","Conectividade","COM_INTERNET","INTERNET"], null));
+        const marker = L.marker([lat, lon], { icon: hasNet === false ? iconRed : iconBlue }).bindPopup(buildPopup(r));
+        marker.on('popupopen', () => { setActiveRowByIndex(idx); });
+        marker.on('popupclose', () => {
+          const row = document.querySelector(`tr[data-idx="${idx}"]`);
+          if (row && row === currentActiveRow) clearActiveRow();
+        });
+        (hasNet === false ? groupWithout : groupWith).addLayer(marker);
+        markers[idx] = marker;
+        markerGroupByIndex[idx] = (hasNet === false ? 'without' : 'with');
+      });
+
+      const bounds = L.featureGroup([groupWith, groupWithout]).getBounds();
+      if (bounds.isValid()) map.fitBounds(bounds.pad(0.1));
+      refreshVisibility();
+
+      filteredIdxs = DATA.map((_, i) => i);
+      renderTable(filteredIdxs);
+    }
+
+    // === Carregamento CSV (com diagnóstico) ===
+    async function loadCSV() {
+      try {
+        if ($csvTried) $csvTried.textContent = DATA_URL;
+        const res = await fetch(DATA_URL, { cache: 'no-store' });
+        if (!res.ok) throw new Error(`HTTP ${res.status} ao buscar ${DATA_URL}`);
+        const text = await res.text();
+        const parsed = Papa.parse(text, { header: true, skipEmptyLines: true });
+        DATA = parsed.data;
+        detectLatLonKeys();
+        refreshMapAndBuild();
+      } catch (e) {
+        console.error('Falha ao carregar CSV via fetch:', e);
+        $warn.style.display = 'block';
+        diag(String(e && e.message ? e.message : e));
+      }
+    }
+    loadCSV();
+
+    // Fallback: upload manual
+    if ($csvFile) {
+      $csvFile.addEventListener('change', (ev) => {
+        const file = ev.target.files && ev.target.files[0];
+        if (!file) return;
+        Papa.parse(file, {
+          header: true,
+          skipEmptyLines: true,
+          complete: (results) => {
+            DATA = results.data;
+            detectLatLonKeys();
+            $warn.style.display = 'none';
+            refreshMapAndBuild();
+            applySearch();
+          },
+          error: (err) => { alert('Erro ao ler o CSV: ' + err.message); }
+        });
+      });
+    }
+
+    // Busca com debounce leve
+    let searchTimer = null;
+    if ($search) {
+      $search.addEventListener('input', () => {
+        if (searchTimer) cancelAnimationFrame(searchTimer);
+        searchTimer = requestAnimationFrame(applySearch);
+      });
+    }
+
+    // Toggles
+    $toggleWith.addEventListener('change', refreshVisibility);
+    $toggleWithout.addEventListener('change', refreshVisibility);
+  </script>
+</body>
+</html>
