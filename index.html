@@ -164,7 +164,7 @@
     let latKey = null, lonKey = null;
     const markers = [];
     const markerGroupByIndex = [];
-    let filteredIdxs = []; // índices atuais após filtro de busca
+    let filteredIdxs = []; // índices após filtro de busca
     let currentActiveRow = null;
 
     function healthPin(color) {
@@ -250,10 +250,21 @@
       $countAll.textContent = visible;
     }
 
+    // >>> Atualizado: aplica filtros também na tabela
     function refreshVisibility() {
       if ($toggleWith.checked) map.addLayer(groupWith); else map.removeLayer(groupWith);
       if ($toggleWithout.checked) map.addLayer(groupWithout); else map.removeLayer(groupWithout);
       updateCount();
+
+      // Calcula quais índices ficam visíveis considerando busca + toggles
+      const visibleIdxs = filteredIdxs.filter(idx => {
+        const r = DATA[idx];
+        const hasNet = normalizeBool(val(r, ["Internet","CE Internet","Conectividade","COM_INTERNET","INTERNET"], null));
+        if (hasNet === true && !$toggleWith.checked) return false;
+        if (hasNet === false && !$toggleWithout.checked) return false;
+        return true;
+      });
+      renderTable(visibleIdxs);
     }
 
     function clearActiveRow() {
@@ -319,7 +330,8 @@
           return { i, hay: (nome + " " + cnes).toLowerCase() };
         }).filter(obj => obj.hay.includes(q)).map(obj => obj.i);
       }
-      renderTable(filteredIdxs);
+      // >>> Atualizado: após busca, respeitar toggles
+      refreshVisibility();
     }
 
     function refreshMapAndBuild() {
@@ -351,10 +363,11 @@
 
       const bounds = L.featureGroup([groupWith, groupWithout]).getBounds();
       if (bounds.isValid()) map.fitBounds(bounds.pad(0.1));
-      refreshVisibility();
+      updateCount();
 
       filteredIdxs = DATA.map((_, i) => i);
-      renderTable(filteredIdxs);
+      // >>> Atualizado: render respeitando os toggles
+      refreshVisibility();
     }
 
     // === Carregamento do CSV ===
