@@ -87,6 +87,14 @@
       aside.open { right: 0; }
       .toggle-btn { display: inline-flex; align-items:center; justify-content:center; }
     }
+
+/* KML controls */
+.kml-controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.kml-item { display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px; background:#eef2f9; }
+.kml-swatch { width:14px; height:14px; border-radius:3px; display:inline-block; box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
+.kml-group { display:flex; gap:8px; align-items:center; }
+.kml-sep { width:1px; height:20px; background:#dbe3f0; margin:0 4px; }
+
   </style>
 </head>
 <body>
@@ -100,7 +108,16 @@
         <label class="badge"><input id="toggleWithout" type="checkbox" checked/> Sem Internet</label>
         <span class="badge"><strong id="countAll">0</strong> unidades</span>
       </div>
-    </header>
+
+    <!-- Controles de Regiões (KML) -->
+    <div class="kml-controls" id="kmlControls">
+      <div class="kml-group">
+        <label class="kml-item"><input type="checkbox" id="kmlAll" checked> <strong>Todos</strong></label>
+        <span class="kml-sep"></span>
+      </div>
+      <div class="kml-group" id="kmlItems"></div>
+    </div>
+</header>
 
     <div class="main">
       <div id="map" class="map"></div>
@@ -139,6 +156,7 @@
   <!-- FIX: caminho correto do plugin MarkerCluster -->
   <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
   <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://unpkg.com/leaflet-omnivore@0.3.4/leaflet-omnivore.min.js"></script>
 
   <script>
     // === Mapa ===
@@ -410,6 +428,104 @@
         $aside.classList.remove('open');
       }
     });
+
+// ====== KMLs (Regiões) ======
+const KMLS = [
+      { id: 'barcarena',    name: 'Barcarena',          file: 'kml/barcarena_dissolved_lines.kml',  color: '#7c3aed' },
+      { id: 'estradas',     name: 'Estradas',           file: 'kml/estradas_dissolved_lines.kml',   color: '#2563eb' },
+      { id: 'ilhas',        name: 'Ilhas',              file: 'kml/ilhas_dissolved_lines.kml',      color: '#10b981' },
+      { id: 'murucupi',     name: 'Murucupi',           file: 'kml/murucupi_dissolved_lines.kml',   color: '#f59e0b' },
+      { id: 'viladoconde',  name: 'Vila do Conde',      file: 'kml/viladoconde_dissolved_lines.kml',color: '#ef4444' },
+    ];
+
+const kmlLayers = new Map(); // id -> layer
+const kmlBounds = L.featureGroup();
+function styleFor(color) { return { color, weight: 3, opacity: 0.9 }; }
+
+function addKmlToMap(k) {
+  if (kmlLayers.has(k.id)) { // já carregado?
+    const layer = kmlLayers.get(k.id);
+    if (!map.hasLayer(layer)) layer.addTo(map);
+    return;
+  }
+  const layer = omnivore.kml(k.file, null, L.geoJSON(null, { style: styleFor(k.color) }));
+  layer.on('ready', () => {
+    kmlBounds.addLayer(layer);
+    // No primeiro load de todos, ajusta o fit
+    if (!map._kmlFitDone) {
+      const b = kmlBounds.getBounds();
+      if (b.isValid()) map.fitBounds(b.pad(0.08));
+      map._kmlFitDone = true;
+    }
+  });
+  layer.addTo(map);
+  kmlLayers.set(k.id, layer);
+}
+
+function removeKmlFromMap(id) {
+  const layer = kmlLayers.get(id);
+  if (layer) {
+    map.removeLayer(layer);
+    kmlBounds.removeLayer(layer);
+  }
+}
+
+// UI
+const $kmlItems = document.getElementById('kmlItems');
+const $kmlAll = document.getElementById('kmlAll');
+
+function renderKmlUI() {
+  $kmlItems.innerHTML = '';
+  KMLS.forEach(k => {
+    const lbl = document.createElement('label');
+    lbl.className = 'kml-item';
+    lbl.innerHTML = `<span class="kml-swatch" style="background:${k.color}"></span>
+                     <input type="checkbox" data-kml="${k.id}" checked> ${k.name}`;
+    $kmlItems.appendChild(lbl);
+  });
+}
+
+function bindKmlEvents() {
+  // Toggle individual
+  $kmlItems.querySelectorAll('input[type="checkbox"][data-kml]').forEach(chk => {
+    chk.addEventListener('change', (e) => {
+      const id = e.target.getAttribute('data-kml');
+      const k = KMLS.find(x => x.id === id);
+      if (!k) return;
+      if (e.target.checked) addKmlToMap(k);
+      else removeKmlFromMap(id);
+
+      // Atualiza o master "Todos"
+      const allInputs = Array.from($kmlItems.querySelectorAll('input[type="checkbox"][data-kml]'));
+      $kmlAll.checked = allInputs.every(i => i.checked);
+    });
+  });
+
+  // Master toggle "Todos"
+  $kmlAll.addEventListener('change', (e) => {
+    const checked = e.target.checked;
+    $kmlItems.querySelectorAll('input[type="checkbox"][data-kml]').forEach(i => {
+      const id = i.getAttribute('data-kml');
+      i.checked = checked;
+      const k = KMLS.find(x => x.id === id);
+      if (checked) addKmlToMap(k);
+      else removeKmlFromMap(id);
+    });
+  });
+}
+
+function initKmls() {
+  renderKmlUI();
+  bindKmlEvents();
+  // Carrega todos inicialmente (opção "Todos" marcada por padrão)
+  KMLS.forEach(addKmlToMap);
+  $kmlAll.checked = true;
+}
+
+// Inicializa KMLs quando a página estiver pronta
+if (document.readyState !== 'loading') initKmls();
+else document.addEventListener('DOMContentLoaded', initKmls);
+
   </script>
 </body>
 </html>
