@@ -87,13 +87,27 @@
       aside.open { right: 0; }
       .toggle-btn { display: inline-flex; align-items:center; justify-content:center; }
     }
+    .title-block {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+    }
 
-/* KML controls */
-.kml-controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
-.kml-item { display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px; background:#eef2f9; }
-.kml-swatch { width:14px; height:14px; border-radius:3px; display:inline-block; box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
-.kml-group { display:flex; gap:8px; align-items:center; }
-.kml-sep { width:1px; height:20px; background:#dbe3f0; margin:0 4px; }
+    .title-block h1 {
+      margin: 0;
+    }
+
+    .title-block .fonte {
+      font-size: 12px;
+      margin-top: 2px;
+      color: #4b5563; /* cinza suave */
+    }
+    /* KML controls */
+    .kml-controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    .kml-item { display:inline-flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px; background:#eef2f9; }
+    .kml-swatch { width:14px; height:14px; border-radius:3px; display:inline-block; box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
+    .kml-group { display:flex; gap:8px; align-items:center; }
+    .kml-sep { width:1px; height:20px; background:#dbe3f0; margin:0 4px; }
 
   </style>
 </head>
@@ -101,6 +115,11 @@
   <div class="app">
     <header>
       <h1>Barcarena — Unidades de Saúde (Conectividade)</h1>
+      <div class="title-block">
+        <h1>Cobertura Móvel</h1>
+        <span class="fonte">Fonte: NIC.br e CONASEMS (Conselho Nacional de Secretarias municipais de Saúde).</span>
+        <span class="fonte">Dados de 20/11/2023 (última atualização)</span>
+      </div>
       <div class="controls">
         <span class="badge"><span class="legend-dot blue"></span> Com internet</span>
         <span class="badge"><span class="legend-dot red"></span> Sem internet</span>
